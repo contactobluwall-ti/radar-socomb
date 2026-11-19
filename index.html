@@ -77,6 +77,13 @@ td .sub{font-size:12px;color:var(--tinta2)}
 .est{padding:3px 8px;border-radius:4px;font-size:12px;font-weight:700;border:1px solid var(--linea);background:#fff}
 .est.contactado{background:#E1F1F5}.est.cita{background:var(--lima)}.est.cerrada{background:var(--navy);color:#fff}.est.cancelado{background:#F6E6D2;color:var(--cafe)}
 .chip{display:inline-block;background:var(--suave);border:1px solid var(--linea);border-radius:999px;padding:1px 8px;font-size:11px;margin:1px 2px 1px 0;color:var(--tinta2)}
+.tag{display:inline-block;border-radius:4px;padding:2px 7px;font-size:11px;font-weight:700;margin:0 4px 4px 0;line-height:1.35;white-space:nowrap;border:1px solid transparent}
+.tag.ok{background:#E9F3C6;color:#33440A;border-color:#C1D66E}
+.tag.falta{background:#F6E6D2;color:var(--cafe);border-color:#E6CBA8}
+.tag.aviso{background:#E1F1F5;color:var(--navy);border-color:var(--menta)}
+.tag a{color:inherit}
+.resumen{display:flex;flex-wrap:wrap;gap:2px;margin:0 0 10px}
+.datos-c .val{display:block;font-size:12px;color:var(--tinta2);margin:0 0 4px;overflow-wrap:anywhere}
 .pag{display:flex;gap:6px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-top:12px}
 .pag .nums{display:flex;gap:4px}
 .pag button.n{min-width:32px;border:1px solid var(--linea);background:#fff;border-radius:4px;padding:5px}
@@ -370,6 +377,28 @@ async function abrirFicha(id, silencioso){
   S.ficha = {id, contactos:c.data||[], notas:n.data||[], eventos:e.data||[], cargando:false};
   renderFicha();
 }
+const limpia = v => String(v ?? "").replace(/\s+/g," ").trim();
+const tag = (t,k) => `<span class="tag ${k}">${t}</span>`;
+function etiquetasContacto(c){
+  const t=[], v=[];
+  if(c.linkedin_url && !c.linkedin_es_busqueda) t.push(tag(`LinkedIn conseguido · ${link(c.linkedin_url,"ver perfil")}`,"ok"));
+  else if(c.linkedin_url) t.push(tag(`Sin perfil · ${link(c.linkedin_url,"buscar en LinkedIn")}`,"falta"));
+  else t.push(tag("Sin LinkedIn","falta"));
+  if(!nopub(c.telefono)) v.push(`Tel. ${esc(limpia(c.telefono))}`); else t.push(tag("Sin teléfono","falta"));
+  if(!nopub(c.correo)) v.push(esc(limpia(c.correo))); else t.push(tag("Sin correo","falta"));
+  if(/vigencia por verificar/i.test(c.fuente||"")) t.push(tag("Vigencia por verificar","aviso"));
+  return v.map(x=>`<span class="val">${x}</span>`).join("")+t.join("");
+}
+function resumenContactos(o, cs){
+  const t=[], reales=cs.filter(c=>c.linkedin_url && !c.linkedin_es_busqueda).length;
+  t.push(!nopub(o.linkedin_empresa)?tag("LinkedIn de la empresa conseguido","ok"):tag("Sin LinkedIn de la empresa","falta"));
+  t.push(reales?tag(`LinkedIn de decisor conseguido (${reales})`,"ok"):tag("Sin LinkedIn de decisor","falta"));
+  t.push(!cs.length?tag("Sin decisor identificado","falta"):tag(`${cs.length} persona${cs.length>1?"s":""} de contacto`,"ok"));
+  t.push(!nopub(o.telefono_empresa)?tag("Teléfono de la empresa","ok"):tag("Sin teléfono","falta"));
+  t.push(!nopub(o.correo_empresa)?tag("Correo de la empresa","ok"):tag("Sin correo","falta"));
+  if(!cs.length && nopub(o.telefono_empresa) && nopub(o.correo_empresa) && nopub(o.sitio_web)) t.unshift(tag("Sin contacto","falta"));
+  return `<div class="resumen">${t.join("")}</div>`;
+}
 function renderFicha(){ if(S.vista==="ficha") document.getElementById("contenido").innerHTML = vistaFicha(); }
 function vistaFicha(){
   const o = porId(S.ficha.id); if(!o) return `<div class="vacio">Obra no encontrada.</div>`;
@@ -412,16 +441,16 @@ function vistaFicha(){
     </dl></section>
   </div>
   <section class="card"><h2>Personas de contacto</h2>
-    <p class="sub" style="color:var(--tinta2);margin-top:0">Marca cada dato como correcto o incorrecto cuando lo compruebes; así el radar aprende qué fuentes sirven.</p>
-    ${F.cargando?"<div class='vacio'>Cargando…</div>":F.contactos.length?`<div class="tw"><table class="resp"><thead><tr><th>Nombre</th><th>Cargo</th><th>Enlace</th><th>Fuente</th><th>¿Dato correcto?</th><th>Corrección</th></tr></thead><tbody>
+    ${F.cargando?"":resumenContactos(o,F.contactos)}
+    <p class="sub" style="color:var(--tinta2);margin-top:0">Marca cada dato como correcto o incorrecto cuando lo compruebes; así el radar aprende qué datos sirven.</p>
+    ${F.cargando?"<div class='vacio'>Cargando…</div>":F.contactos.length?`<div class="tw"><table class="resp"><thead><tr><th>Nombre</th><th>Cargo</th><th>Datos conseguidos</th><th>¿Dato correcto?</th><th>Corrección</th></tr></thead><tbody>
       ${F.contactos.map(c=>`<tr>
-        <td data-l="Nombre"><b>${esc(c.nombre)}</b></td><td data-l="Cargo">${esc(c.cargo)}</td>
-        <td data-l="Enlace">${c.linkedin_url?link(c.linkedin_url, c.linkedin_es_busqueda?"Abrir búsqueda en LinkedIn":"Ver perfil público"):"—"}</td>
-        <td data-l="Fuente"><span class="sub" style="color:var(--tinta2)">${esc(c.fuente)}</span></td>
+        <td data-l="Nombre"><b>${esc(limpia(c.nombre))}</b></td><td data-l="Cargo">${esc(limpia(c.cargo))}</td>
+        <td data-l="Datos" class="datos-c">${etiquetasContacto(c)}</td>
         <td data-l="¿Correcto?"><div class="seg"><button data-dato="${c.id}|true" aria-pressed="${c.dato_ok===true}" ${e?"disabled":""}>Sí</button><button data-dato="${c.id}|false" aria-pressed="${c.dato_ok===false}" ${e?"disabled":""}>No</button></div></td>
-        <td data-l="Corrección"><input type="text" id="corr-${c.id}" value="${esc(c.corregido||"")}" placeholder="Dato correcto" ${e?"disabled":""} style="width:100%"> ${e?"":`<button class="btn sm" data-corr="${c.id}">Guardar</button>`}</td></tr>`).join("")}
+        <td data-l="Corrección"><input type="text" id="corr-${c.id}" value="${esc(c.corregido||"")}" placeholder="Dato correcto" ${e?"disabled":""} style="width:100%;margin-bottom:4px"> ${e?"":`<button class="btn sm" data-corr="${c.id}">Guardar</button>`}</td></tr>`).join("")}
       </tbody></table></div>`:`<div class="vacio">Aún no hay personas de contacto estructuradas para esta obra.</div>`}
-    ${!nopub(o.decisores)?`<details style="margin-top:10px"><summary>Resumen completo de la búsqueda de decisores</summary><p>${esc(o.decisores)}</p><p class="sub" style="color:var(--tinta2)">Fuente de los contactos: ${esc(o.fuente_contactos)}<br>Búsquedas realizadas: ${esc(o.contactos_buscados)}<br>Enriquecimiento externo: ${esc(o.enriquecimiento)}</p></details>`:`<p class="sub" style="color:var(--tinta2)">Búsquedas realizadas: ${esc(o.contactos_buscados)}</p>`}
+    ${!nopub(o.decisores)?`<details style="margin-top:10px"><summary>Resumen completo de la búsqueda de decisores</summary><p>${esc(o.decisores)}</p><p class="sub" style="color:var(--tinta2)">Búsquedas realizadas: ${esc(o.contactos_buscados)}<br>Enriquecimiento externo: ${esc(o.enriquecimiento)}</p></details>`:`<p class="sub" style="color:var(--tinta2)">Búsquedas realizadas: ${esc(o.contactos_buscados)}</p>`}
   </section>
   <div class="grid2">
     <section class="card"><h2>Notas del equipo</h2>
