@@ -315,7 +315,7 @@ function vistaSemana(){
   const cambios = S.obras.filter(o=>o.novedad==="cambio de etapa"||o.novedad==="actualización");
   const A = nuevas.filter(o=>o.clase==="A").length, B = nuevas.filter(o=>o.clase==="B").length;
   const pend = nuevas.filter(o=>o.clase==="A"&&o.nivel_contacto===3).length;
-  const top = nuevas.slice().sort((a,b)=>b.puntos-a.puntos||a.nivel_contacto-b.nivel_contacto).slice(0,5);
+  const top = nuevas.filter(o=>Number(o.nivel_contacto)!==3).sort((a,b)=>b.puntos-a.puntos||a.nivel_contacto-b.nivel_contacto).slice(0,5);
   return `
   <div class="lead"><div><h1>Esta semana</h1>
     <p>${ult?`Corrida del ${fecha(ult.fecha)} ${ult.es_prueba?'<span class="pill prueba">Corrida de prueba</span>':""}`:"Aún no hay corridas registradas."}</p></div>
