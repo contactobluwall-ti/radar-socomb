@@ -153,7 +153,7 @@ const SUPABASE_URL = "https://xdszabrywjygoqenhctu.supabase.co";
 const SUPABASE_KEY = "sb_publishable_cCrfKF8myxMpszlV5FDKJQ_gbw57tMe"; // clave pública; la seguridad real está en las reglas de la base
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-const ESTADOS = { no:"No contactado", contactado:"Contactado", cita:"Cita agendada", cancelado:"Cancelado", cerrada:"Cerrada" };
+const ESTADOS = { no:"No contactado", contactado:"Contactado", cita:"Cita agendada", cancelado:"No aplicó / perdida", cerrada:"Ganada" };
 const EVT = { deteccion:"Detectada por el radar", estado:"Cambio de estado", util:"Marca de utilidad", etapa:"Cambio de etapa", novedad:"Novedad", contacto:"Contactos agregados" };
 const NIVELES = { 1:"Decisor identificado", 2:"Canal general", 3:"Contacto pendiente" };
 const S = {
@@ -365,7 +365,7 @@ function vistaMes(){
       <dl class="kv">${Object.entries(ESTADOS).map(([k,v])=>`<dt>${v}</dt><dd><b>${por(k)}</b> de ${total}</dd>`).join("")}</dl></section>
     <section class="card"><h2>Calidad del radar en el mes</h2>
       <dl class="kv"><dt>Marcadas útiles</dt><dd><b>${utiles}</b></dd><dt>Marcadas no útiles</dt><dd><b>${noU}</b></dd>
-      <dt>Obras A</dt><dd><b>${A.length}</b> (${A.filter(o=>o.util==="util").length} útiles, ${A.filter(o=>o.estado==="cita"||o.estado==="cerrada").length} con cita o cerradas)</dd>
+      <dt>Obras A</dt><dd><b>${A.length}</b> (${A.filter(o=>o.util==="util").length} útiles, ${A.filter(o=>o.estado==="cita"||o.estado==="cerrada").length} con cita o ganadas)</dd>
       <dt>Sin calificar</dt><dd><b>${delMes.filter(o=>!o.util).length}</b></dd></dl>
       <p class="sub" style="color:var(--tinta2)">El radar empieza a ajustar su puntuación cuando haya al menos 30 obras calificadas.</p></section>
   </div>
