@@ -52,7 +52,7 @@ main{max-width:1280px;margin:0 auto;padding:20px}
 .t5 .nm{font-weight:700;color:var(--navy);margin:2px 0 4px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .t5 .m{font-size:12px;color:var(--tinta2)}
 /* Controles */
-.filtros{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
+.filtros{scroll-margin-top:72px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
 .filtros label{display:flex;flex-direction:column;font-size:11px;font-weight:700;color:var(--tinta2);gap:3px}
 input[type=search],input[type=text],input[type=email],input[type=password],select,textarea{font:inherit;border:1px solid var(--linea);border-radius:4px;padding:7px 9px;background:#fff;color:var(--tinta);min-width:0}
 .filtros select{max-width:200px}
@@ -272,7 +272,7 @@ function tablaHTML(clave, base, {mostrarNov=false}={}){
   const sel = (k,lbl,vals,fmt=x=>x) => `<label>${lbl}<select data-f="${clave}|${k}"><option value="">Todos</option>${vals.map(v=>`<option value="${esc(v)}"${T.f[k]===String(v)?" selected":""}>${esc(fmt(v))}</option>`).join("")}</select></label>`;
   const hay = Object.values(T.f).some(Boolean) || T.q;
   return `
-  <div class="filtros">
+  <div class="filtros" data-tabla="${clave}">
     <label>Buscar<input type="search" placeholder="Obra, ciudad, desarrollador…" value="${esc(T.q)}" data-q="${clave}" style="min-width:220px"></label>
     ${sel("categoria","Categoría",uniq(base,"categoria"))}
     ${sel("entidad","Entidad",uniq(base,"entidad"))}
@@ -530,7 +530,7 @@ document.addEventListener("click", e=>{
   if(e.target.closest("[data-stop]") && t.dataset.ficha) return; // clic en el selector de estado no abre la ficha
   if(t.dataset.vista) return irA(t.dataset.vista);
   if(t.dataset.ficha){ history.pushState(null,"","#obra-"+t.dataset.ficha); S.vista="ficha"; return abrirFicha(t.dataset.ficha); }
-  if(t.dataset.pag){ const [k,n]=t.dataset.pag.split("|"); S.tabla[k].pag=+n; render(); return document.getElementById("contenido").scrollIntoView(); }
+  if(t.dataset.pag){ const [k,n]=t.dataset.pag.split("|"); S.tabla[k].pag=+n; render(); const ft=document.querySelector(`[data-tabla="${k}"]`); if(ft) ft.scrollIntoView(); return; }
   if(t.dataset.limpiar){ const T=S.tabla[t.dataset.limpiar]; T.q=""; T.f={}; T.pag=1; return render(); }
   if(t.dataset.csv) return descargarCSV(t.dataset.csv);
   if(t.dataset.util){ const [id,v]=t.dataset.util.split("|"); return marcarUtil(id,v); }
