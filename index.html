@@ -443,7 +443,7 @@ function vistaFicha(){
       <dt>LEED</dt><dd>${esc(o.leed)}</dd><dt>Marcas</dt><dd>${esc(o.marcas)}</dd><dt>Riesgo</dt><dd>${esc(o.riesgo)}</dd>
       <dt>Fuentes</dt><dd>${fuentes.map(u=>seguro(u)?link(u,u.replace(/^https?:\/\/(www\.)?/,"").slice(0,60)):esc(u)).join("<br>")}<div class="sub" style="color:var(--tinta2)">Fecha de la fuente: ${esc(o.fecha_fuente)}</div></dd>
       <dt>Confianza</dt><dd>${esc(confSolo(o.confianza))}</dd>
-      <dt>Puntos</dt><dd>${esc(desglose(o.confianza)||"desglose no publicado")} <span class="sub" style="color:var(--tinta2)">(familias · tamaño · tipo · confianza)</span></dd>
+      <dt>Puntos</dt><dd>${esc(desglose(o.confianza)||"desglose no publicado")} <span class="sub" style="color:var(--tinta2)">(familias · tamaño · tipo · confianza · contacto)</span></dd>
     </dl></section>
     <section class="card"><h2>Cadena y contacto</h2><dl class="kv">
       <dt>Desarrollador</dt><dd>${esc(o.desarrollador)}</dd><dt>Constructora</dt><dd>${esc(o.constructora)}</dd><dt>Cadena</dt><dd>${esc(o.cadena)}</dd>
