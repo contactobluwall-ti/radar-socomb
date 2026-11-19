@@ -95,6 +95,12 @@ td .sub{font-size:12px;color:var(--tinta2)}
 .kv{display:grid;grid-template-columns:150px 1fr;gap:6px 12px;font-size:13px}
 .kv dt{color:var(--tinta2);font-weight:700}
 .kv dd{margin:0;word-break:break-word}
+.cat-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:2px 28px;font-size:13px}
+.cat-item{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:6px 0;border-bottom:1px solid var(--linea)}
+.cat-item span{color:var(--tinta2);font-weight:700;word-break:break-word}
+.cat-item b{font-variant-numeric:tabular-nums;color:var(--navy)}
+@media (max-width:1000px){.cat-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:640px){.cat-grid{grid-template-columns:1fr}}
 .seg{display:inline-flex;border:1px solid var(--navy);border-radius:4px;overflow:hidden}
 .seg button{border:0;background:#fff;padding:6px 12px;font-weight:600;color:var(--navy)}
 .seg button+button{border-left:1px solid var(--navy)}
@@ -157,7 +163,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const ESTADOS = { no:"No contactado", contactado:"Contactado", cita:"Cita agendada", cancelado:"No aplicó / perdida", cerrada:"Ganada" };
 const EVT = { deteccion:"Detectada por el radar", estado:"Cambio de estado", util:"Marca de utilidad", etapa:"Cambio de etapa", novedad:"Novedad", contacto:"Contactos agregados" };
 const NIVELES = { 1:"Decisor identificado", 2:"Canal general", 3:"Contacto pendiente" };
-const VERSION = "2026-11-19.2";
+const VERSION = "2026-11-19.3";
 const ORDEN0 = {semana:"puntos",cambios:"puntos",historico:"reciente",mes:"puntos"};
 const S = {
   fijada:null, yLista:null,
@@ -381,7 +387,7 @@ function vistaMes(){
       <dt>Sin calificar</dt><dd><b>${delMes.filter(o=>!o.util).length}</b></dd></dl>
       <p class="sub" style="color:var(--tinta2)">El radar empieza a ajustar su puntuación cuando haya al menos 30 obras calificadas.</p></section>
   </div>
-  <section class="card"><h2>Obras por categoría (mes)</h2><dl class="kv" style="grid-template-columns:260px 1fr">${cats.map(([k,n])=>`<dt>${esc(k)}</dt><dd>${n}</dd>`).join("")}</dl></section>
+  <section class="card"><h2>Obras por categoría (mes)</h2><div class="cat-grid">${cats.map(([k,n])=>`<div class="cat-item"><span>${esc(k)}</span><b>${n}</b></div>`).join("")}</div></section>
   <section class="card"><h2>Todas las obras de ${S.mes?esc(etiquetaMes(S.mes)):"el mes"} (${delMes.length})</h2>
     ${tablaHTML("mes",delMes,{mostrarNov:true})}</section>`;
 }
