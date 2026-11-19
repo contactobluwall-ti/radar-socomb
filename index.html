@@ -157,7 +157,10 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const ESTADOS = { no:"No contactado", contactado:"Contactado", cita:"Cita agendada", cancelado:"No aplicó / perdida", cerrada:"Ganada" };
 const EVT = { deteccion:"Detectada por el radar", estado:"Cambio de estado", util:"Marca de utilidad", etapa:"Cambio de etapa", novedad:"Novedad", contacto:"Contactos agregados" };
 const NIVELES = { 1:"Decisor identificado", 2:"Canal general", 3:"Contacto pendiente" };
+const VERSION = "2026-11-19.2";
+const ORDEN0 = {semana:"puntos",cambios:"puntos",historico:"reciente",mes:"puntos"};
 const S = {
+  fijada:null, yLista:null,
   arranque:true, user:null, rol:null, obras:[], corridas:[], cargado:false, error:null,
   vista:"semana", ficha:null, recovery:false, modoLogin:"entrar",
   tabla:{
@@ -170,6 +173,7 @@ const S = {
 };
 
 /* ============ Utilidades ============ */
+const norm = s => String(s ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const seguro = u => /^https?:\/\//i.test(u||"") ? u : "";
 const link = (u, t) => seguro(u) ? `<a href="${esc(seguro(u))}" target="_blank" rel="noopener noreferrer">${esc(t||u)}</a>` : esc(t||u||"");
@@ -197,12 +201,19 @@ function toast(msg, tipo="ok", deshacer){
 /* ============ Datos ============ */
 async function cargar(){
   S.error = null;
-  const [o, c] = await Promise.all([
-    sb.from("obras").select("*").order("puntos",{ascending:false}),
-    sb.from("corridas").select("*").order("fecha",{ascending:true})
-  ]);
-  if(o.error || c.error){ S.error = (o.error||c.error).message; S.cargado = true; return; }
-  S.obras = o.data; S.corridas = c.data; S.cargado = true;
+  try{
+    const [o, c] = await Promise.all([
+      sb.from("obras").select("*").order("puntos",{ascending:false}),
+      sb.from("corridas").select("*").order("fecha",{ascending:true})
+    ]);
+    if(o.error || c.error){ S.error = (o.error||c.error).message; S.cargado = true; return; }
+    S.obras = o.data; S.corridas = c.data; S.cargado = true;
+  }catch(err){ S.error = "No se pudo conectar. Revisa tu internet."; S.cargado = true; }
+}
+async function reintentar(){
+  S.cargado = false; S.error = null; render();
+  await cargar(); render();
+  if(location.hash.startsWith("#obra-")) desdeHash();
 }
 async function entrarSesion(session){
   S.user = session ? session.user : null;
@@ -224,7 +235,7 @@ async function guardarObra(id, campos, etiqueta, deshacer){
   }
   toast(etiqueta, "ok", deshacer ? ()=>guardarObra(id, prev, "Cambio deshecho") : null);
 }
-const cambiarEstado = (id,v) => { const o=porId(id); if(!o||o.estado===v) return; guardarObra(id,{estado:v},`${o.obra.split("(")[0].trim()}: ${ESTADOS[v]}`,true); };
+const cambiarEstado = (id,v) => { const o=porId(id); if(!o||o.estado===v) return; S.fijada=id; guardarObra(id,{estado:v},`${o.obra.split("(")[0].trim()}: ${ESTADOS[v]}`,true); };
 const marcarUtil = (id,v) => { const o=porId(id); const nuevo = o.util===v ? null : v; guardarObra(id,{util:nuevo}, nuevo==="util"?"Marcada como útil":nuevo==="no_util"?"Marcada como no útil":"Marca quitada", true); };
 
 async function marcarContacto(cid, ok){
@@ -250,9 +261,9 @@ async function agregarNota(){
 /* ============ Filtro / orden / paginación ============ */
 function aplicar(rows, T){
   let r = rows.slice();
-  const q = T.q.trim().toLowerCase();
-  if(q) r = r.filter(o => [o.obra,o.ciudad,o.entidad,o.desarrollador,o.categoria,o.id,o.constructora].join(" ").toLowerCase().includes(q));
-  for(const [k,v] of Object.entries(T.f)) if(v) r = r.filter(o => String(o[k]) === v);
+  const q = norm(T.q.trim());
+  if(q) r = r.filter(o => norm([o.obra,o.ciudad,o.entidad,o.desarrollador,o.categoria,o.id,o.constructora].join(" ")).includes(q));
+  for(const [k,v] of Object.entries(T.f)) if(v) r = r.filter(o => o.id === S.fijada || String(o[k]) === v);
   const ord = {
     puntos:(a,b)=>b.puntos-a.puntos || a.nivel_contacto-b.nivel_contacto,
     reciente:(a,b)=>String(b.primera_deteccion).localeCompare(a.primera_deteccion) || b.puntos-a.puntos,
@@ -270,7 +281,7 @@ function tablaHTML(clave, base, {mostrarNov=false}={}){
   const total = Math.max(1, Math.ceil(rows.length/T.por)); if(T.pag>total) T.pag=total;
   const ini = (T.pag-1)*T.por, vis = rows.slice(ini, ini+T.por);
   const sel = (k,lbl,vals,fmt=x=>x) => `<label>${lbl}<select data-f="${clave}|${k}"><option value="">Todos</option>${vals.map(v=>`<option value="${esc(v)}"${T.f[k]===String(v)?" selected":""}>${esc(fmt(v))}</option>`).join("")}</select></label>`;
-  const hay = Object.values(T.f).some(Boolean) || T.q;
+  const hay = Object.values(T.f).some(Boolean) || T.q || T.orden !== ORDEN0[clave];
   return `
   <div class="filtros" data-tabla="${clave}">
     <label>Buscar<input type="search" placeholder="Obra, ciudad, desarrollador…" value="${esc(T.q)}" data-q="${clave}" style="min-width:220px"></label>
@@ -286,7 +297,7 @@ function tablaHTML(clave, base, {mostrarNov=false}={}){
   <div class="tw"><table class="resp">
     <thead><tr><th>Obra</th><th>Clase</th><th>Puntos</th><th>Categoría</th><th>Ciudad</th><th>Etapa</th><th>Contacto</th><th>Estado</th></tr></thead>
     <tbody>${vis.length ? vis.map(o=>`
-      <tr class="fila" data-ficha="${esc(o.id)}">
+      <tr class="fila" data-ficha="${esc(o.id)}" tabindex="0">
         <td data-l="Obra"><div class="nm">${esc(o.obra)}</div><div class="sub">${esc(o.id)} · ${esc(o.desarrollador||"")}${mostrarNov&&o.novedad&&o.novedad!=="sin cambio"?` · <b>${esc(o.novedad)}</b>`:""}</div></td>
         <td data-l="Clase"><span class="badge ${esc(o.clase)}">${esc(o.clase)}</span></td>
         <td data-l="Puntos"><b>${esc(o.puntos)}</b></td>
@@ -344,7 +355,7 @@ function vistaMes(){
   const meses = [...new Set(S.obras.map(mesDe).filter(Boolean))].sort().reverse();
   if(!S.mes || !meses.includes(S.mes)) S.mes = meses[0] || null;
   const delMes = S.obras.filter(o=>mesDe(o)===S.mes);
-  const cs = S.corridas.slice(-8);
+  const cs = S.corridas.filter(c=>String(c.fecha).slice(0,7)===S.mes).slice(-8);
   const max = Math.max(1,...cs.map(c=>c.nuevas||0));
   const por = (k)=>delMes.filter(o=>o.estado===k).length;
   const total = delMes.length, A = delMes.filter(o=>o.clase==="A");
@@ -353,13 +364,13 @@ function vistaMes(){
   const cats = Object.entries(cat).sort((a,b)=>b[1]-a[1]);
   return `<div class="lead"><div><h1>Mes e histórico de corridas</h1><p>Evolución semana a semana y todas las obras detectadas en el mes.</p></div>
     ${meses.length?`<label style="font-weight:700;font-size:12px;color:var(--tinta2)">Mes<br><select data-mes>${meses.map(m=>`<option value="${m}"${m===S.mes?" selected":""}>${esc(etiquetaMes(m))} (${S.obras.filter(o=>mesDe(o)===m).length})</option>`).join("")}</select></label>`:""}</div>
-  <section class="card"><h2>Obras nuevas por corrida</h2>
+  <section class="card"><h2>Obras nuevas por corrida (${S.mes?esc(etiquetaMes(S.mes)):"mes"})</h2>
     ${cs.length?`<div class="bars">${cs.map(c=>{const h=n=>Math.round((n||0)/max*180);return `<div class="bar"><div class="tot">${c.nuevas||0}</div>
       <div class="seg1" style="height:${h(c.clase_a)}px" title="Clase A: ${c.clase_a||0}"></div><div class="seg2" style="height:${h(c.clase_b)}px" title="Clase B: ${c.clase_b||0}"></div><div class="seg3" style="height:${h(c.clase_c)}px" title="Clase C: ${c.clase_c||0}"></div></div>`}).join("")}</div>
       <div class="blabels">${cs.map(c=>`<div>${esc(fechaCorta(c.fecha))}${c.es_prueba?"<br>(prueba)":""}</div>`).join("")}</div>
       <div class="leyenda"><span><i style="background:var(--lima)"></i>Clase A</span><span><i style="background:var(--menta)"></i>Clase B</span><span><i style="background:#C9D3D6"></i>Clase C</span></div>
       ${cs.length<2?`<p class="sub" style="color:var(--tinta2)">Hay una sola corrida registrada; la comparación aparece cuando haya más semanas.</p>`:""}`
-    :`<div class="vacio">Aún no hay corridas registradas.</div>`}
+    :`<div class="vacio">No hay corridas registradas en este mes.</div>`}
   </section>
   <div class="grid2">
     <section class="card"><h2>Avance comercial del mes</h2>
@@ -378,7 +389,7 @@ function vistaMes(){
 /* ============ Ficha ============ */
 async function abrirFicha(id, silencioso){
   const o = porId(id); if(!o) return;
-  if(!silencioso){ S.ficha = {id, contactos:[], notas:[], eventos:[], cargando:true}; render(); window.scrollTo(0,0); }
+  if(!silencioso){ const nn=document.getElementById("nota-nueva"); if(nn) nn.value=""; S.ficha = {id, contactos:[], notas:[], eventos:[], cargando:true}; render(); window.scrollTo(0,0); }
   const [c,n,e] = await Promise.all([
     sb.from("contactos").select("*").eq("obra_id",id).order("id"),
     sb.from("notas").select("*").eq("obra_id",id).order("creado_en",{ascending:false}),
@@ -410,9 +421,23 @@ function resumenContactos(o, cs){
   if(!cs.length && nopub(o.telefono_empresa) && nopub(o.correo_empresa) && nopub(o.sitio_web)) t.unshift(tag("Sin contacto","falta"));
   return `<div class="resumen">${t.join("")}</div>`;
 }
-function renderFicha(){ if(S.vista==="ficha") document.getElementById("contenido").innerHTML = vistaFicha(); }
+function claveFoco(el){
+  if(!el || el===document.body) return null;
+  if(el.id) return "#"+el.id;
+  for(const a of ["data-f","data-o","data-por","data-estado","data-q","data-mes","data-pag","data-util","data-dato","data-corr","data-vista"]) if(el.hasAttribute(a)) return `[${a}="${CSS.escape(el.getAttribute(a))}"]`;
+  return null;
+}
+function conservar(fn){
+  const y = window.scrollY, foco = claveFoco(document.activeElement), vals = {};
+  document.querySelectorAll("#contenido input[id], #contenido textarea[id]").forEach(i=>{ vals[i.id]=i.value; });
+  fn();
+  for(const [id,v] of Object.entries(vals)){ const n=document.getElementById(id); if(n && n.value!==v) n.value=v; }
+  window.scrollTo(0,y);
+  if(foco){ const n=document.querySelector(foco); if(n && n!==document.activeElement) n.focus({preventScroll:true}); }
+}
+function renderFicha(){ if(S.vista==="ficha") conservar(()=>{ document.getElementById("contenido").innerHTML = vistaFicha(); }); }
 function vistaFicha(){
-  const o = porId(S.ficha.id); if(!o) return `<div class="vacio">Obra no encontrada.</div>`;
+  const o = porId(S.ficha.id); if(!o) return `<div class="vacio">Obra no encontrada.<br><br><button class="btn" data-vista="semana">Ir a Esta semana</button></div>`;
   const F = S.ficha, e = !puede();
   const fuentes = String(o.fuente_url||"").split(/\s*;\s*/).filter(Boolean);
   const canal = [
@@ -422,7 +447,7 @@ function vistaFicha(){
     ["LinkedIn empresa", nopub(o.linkedin_empresa)?null:link(String(o.linkedin_empresa).match(/https?:\/\/\S+/)?.[0]||"", "Ver página de la empresa")]
   ];
   return `
-  <button class="back" data-vista="${S.ultimaVista||"semana"}">← Volver</button>
+  <button class="back" data-vista="${S.ultimaVista||"semana"}" data-volver>← Volver</button>
   <div class="lead"><div><h1>${esc(o.obra)}</h1>
     <p>${esc(o.id)} · ${esc(o.categoria)} · ${esc(o.ciudad)}, ${esc(o.entidad)}</p></div>
     <div><span class="badge ${esc(o.clase)}">Clase ${esc(o.clase)}</span> <b style="font-size:20px">${esc(o.puntos)}</b> <span class="sub">puntos</span></div></div>
@@ -465,7 +490,7 @@ function vistaFicha(){
   </section>
   <div class="grid2">
     <section class="card"><h2>Notas del equipo</h2>
-      ${e?"":`<textarea id="nota-nueva" rows="3" style="width:100%" placeholder="Escribe una nota sobre esta obra"></textarea><button class="btn pri" data-nota style="margin:6px 0 10px">Guardar nota</button>`}
+      ${e?"":`<textarea id="nota-nueva" rows="3" style="width:100%" placeholder="Escribe una nota sobre esta obra (Ctrl+Enter para guardar)"></textarea><button class="btn pri" data-nota style="margin:6px 0 10px">Guardar nota</button>`}
       ${F.cargando?"":F.notas.length?F.notas.map(n=>`<div class="nota">${esc(n.texto)}<br><small>${esc(n.autor)} · ${ts(n.creado_en)}</small></div>`).join(""):`<div class="vacio" style="padding:10px">Aún no hay notas.</div>`}
       ${o.hoja_notas?`<div class="nota"><b>Notas heredadas de la hoja:</b> ${esc(o.hoja_notas)}</div>`:""}
     </section>
@@ -494,7 +519,8 @@ function pantallaSinAcceso(){
     <p>Tu cuenta existe, pero aún no está autorizada para ver el Radar. Pide a Matt que agregue este correo y vuelve a entrar.</p>
     <button class="btn" data-salir>Salir</button></div>`;
 }
-function render(){
+function render(){ conservar(pintar); }
+function pintar(){
   const app = document.getElementById("app");
   if(S.arranque){ app.innerHTML = `<div class="vacio">Cargando…</div>`; return; }
   if(S.recovery || !S.user){ app.innerHTML = pantallaLogin(); return; }
@@ -504,34 +530,41 @@ function render(){
       <div class="brand"><b>Radar SOCOMB</b><span>Construye Inteligente</span></div>
       <nav class="tabs" aria-label="Secciones">${tab("semana","Esta semana")}${tab("mes","Mes")}${tab("historico","Histórico")}</nav>
       <div class="user"><span>${esc(S.user.email)} · ${esc(S.rol)}</span><button data-salir>Salir</button></div></div></header>
-    <main id="contenido">${!S.cargado?`<div class="vacio">Cargando obras…</div>`:S.error?`<div class="alerta">No se pudieron cargar los datos: ${esc(S.error)}</div>`:
-      S.vista==="ficha"?(S.ficha?vistaFicha():`<div class="vacio">Abriendo ficha…</div>`):S.vista==="mes"?vistaMes():S.vista==="historico"?vistaHistorico():vistaSemana()}</main>
-    <footer>Uso interno · SOCOMB no garantiza obligaciones del contratista ni administra su dinero.</footer>`;
+    <main id="contenido">${!S.cargado?`<div class="vacio">Cargando obras…</div>`:S.error?`<div class="alerta">No se pudieron cargar los datos: ${esc(S.error)} <button class="btn sm" data-reintentar style="margin-left:10px">Reintentar</button></div>`:
+      S.vista==="ficha"?(S.ficha?vistaFicha():S.cargado?`<div class="vacio">Obra no encontrada.<br><br><button class="btn" data-vista="semana">Ir a Esta semana</button></div>`:`<div class="vacio">Abriendo ficha…</div>`):S.vista==="mes"?vistaMes():S.vista==="historico"?vistaHistorico():vistaSemana()}</main>
+    <footer>Uso interno · SOCOMB no garantiza obligaciones del contratista ni administra su dinero. · Versión ${VERSION}</footer>`;
 }
 
 /* ============ Navegación ============ */
-function irA(v){
+function irA(v, volver){
   if(v==="ficha") return;
-  S.vista = v; S.ultimaVista = v; S.ficha = null;
+  const y = volver && S.yLista!=null ? S.yLista : 0;
+  S.vista = v; S.ultimaVista = v; S.ficha = null; S.fijada = null;
   if(location.hash !== "#"+v) history.pushState(null,"","#"+v);
-  render(); window.scrollTo(0,0);
+  render(); window.scrollTo(0,y);
+}
+function abrirDesdeLista(id){
+  if(S.vista!=="ficha") S.yLista = window.scrollY;
+  S.fijada = null;
+  history.pushState(null,"","#obra-"+id); S.vista="ficha"; return abrirFicha(id);
 }
 function desdeHash(){
-  const h = location.hash.slice(1);
-  if(h.startsWith("obra-")){ S.ultimaVista = S.ultimaVista||"semana"; S.vista="ficha"; if(S.cargado&&porId(h.slice(5))) abrirFicha(h.slice(5)); else render(); }
-  else { S.vista = ["semana","mes","historico"].includes(h)?h:"semana"; S.ultimaVista=S.vista; S.ficha=null; render(); }
+  const h = location.hash.slice(1), venia = S.vista==="ficha";
+  if(h.startsWith("obra-")){ if(!venia) S.yLista = window.scrollY; S.ultimaVista = S.ultimaVista||"semana"; S.vista="ficha"; if(S.cargado&&porId(h.slice(5))) abrirFicha(h.slice(5)); else { S.ficha=null; render(); } }
+  else { S.vista = ["semana","mes","historico"].includes(h)?h:"semana"; S.ultimaVista=S.vista; S.ficha=null; S.fijada=null; render(); if(venia && S.yLista!=null) window.scrollTo(0,S.yLista); }
 }
 window.addEventListener("popstate", desdeHash);
 
 /* ============ Eventos (delegación) ============ */
 document.addEventListener("click", e=>{
-  const t = e.target.closest("[data-vista],[data-ficha],[data-pag],[data-limpiar],[data-csv],[data-util],[data-dato],[data-corr],[data-nota],[data-salir],[data-modo]");
+  const t = e.target.closest("[data-vista],[data-ficha],[data-pag],[data-limpiar],[data-csv],[data-util],[data-dato],[data-corr],[data-nota],[data-salir],[data-modo],[data-reintentar]");
   if(!t) return;
   if(e.target.closest("[data-stop]") && t.dataset.ficha) return; // clic en el selector de estado no abre la ficha
-  if(t.dataset.vista) return irA(t.dataset.vista);
-  if(t.dataset.ficha){ history.pushState(null,"","#obra-"+t.dataset.ficha); S.vista="ficha"; return abrirFicha(t.dataset.ficha); }
-  if(t.dataset.pag){ const [k,n]=t.dataset.pag.split("|"); S.tabla[k].pag=+n; render(); const ft=document.querySelector(`[data-tabla="${k}"]`); if(ft) ft.scrollIntoView(); return; }
-  if(t.dataset.limpiar){ const T=S.tabla[t.dataset.limpiar]; T.q=""; T.f={}; T.pag=1; return render(); }
+  if("reintentar" in t.dataset) return reintentar();
+  if(t.dataset.vista) return irA(t.dataset.vista, "volver" in t.dataset);
+  if(t.dataset.ficha) return abrirDesdeLista(t.dataset.ficha);
+  if(t.dataset.pag){ const [k,n]=t.dataset.pag.split("|"); S.tabla[k].pag=+n; S.fijada=null; render(); const ft=document.querySelector(`[data-tabla="${k}"]`); if(ft) ft.scrollIntoView(); return; }
+  if(t.dataset.limpiar){ const T=S.tabla[t.dataset.limpiar]; T.q=""; T.f={}; T.orden=ORDEN0[t.dataset.limpiar]; T.pag=1; S.fijada=null; return render(); }
   if(t.dataset.csv) return descargarCSV(t.dataset.csv);
   if(t.dataset.util){ const [id,v]=t.dataset.util.split("|"); return marcarUtil(id,v); }
   if(t.dataset.dato){ const [id,v]=t.dataset.dato.split("|"); return marcarContacto(+id, v==="true"); }
@@ -542,15 +575,22 @@ document.addEventListener("click", e=>{
 });
 document.addEventListener("change", e=>{
   const t = e.target;
+  if(!t.dataset.estado) S.fijada = null;
   if("mes" in t.dataset && t.tagName==="SELECT"){ S.mes=t.value; S.tabla.mes.pag=1; S.tabla.mes.q=""; S.tabla.mes.f={}; return render(); }
   if(t.dataset.estado) return cambiarEstado(t.dataset.estado, t.value);
   if(t.dataset.f){ const [k,c]=t.dataset.f.split("|"); S.tabla[k].f[c]=t.value; S.tabla[k].pag=1; return render(); }
   if(t.dataset.o){ S.tabla[t.dataset.o].orden=t.value; return render(); }
   if(t.dataset.por){ S.tabla[t.dataset.por].por=+t.value; S.tabla[t.dataset.por].pag=1; return render(); }
 });
+document.addEventListener("keydown", e=>{
+  const t = e.target;
+  if((e.key==="Enter"||e.key===" ") && t.matches && t.matches("tr.fila")){ e.preventDefault(); return abrirDesdeLista(t.dataset.ficha); }
+  if(e.key==="Enter" && t.id && t.id.startsWith("corr-")){ e.preventDefault(); return corregirContacto(+t.id.slice(5)); }
+  if(e.key==="Enter" && (e.ctrlKey||e.metaKey) && t.id==="nota-nueva"){ e.preventDefault(); return agregarNota(); }
+});
 let tq; document.addEventListener("input", e=>{
   const t=e.target; if(!t.dataset.q) return;
-  clearTimeout(tq); tq=setTimeout(()=>{ const T=S.tabla[t.dataset.q]; T.q=t.value; T.pag=1; const pos=t.selectionStart; render(); const n=document.querySelector(`[data-q="${t.dataset.q}"]`); if(n){n.focus(); n.setSelectionRange(pos,pos);} },250);
+  clearTimeout(tq); tq=setTimeout(()=>{ S.fijada=null; const T=S.tabla[t.dataset.q]; T.q=t.value; T.pag=1; const pos=t.selectionStart; render(); const n=document.querySelector(`[data-q="${t.dataset.q}"]`); if(n){n.focus(); n.setSelectionRange(pos,pos);} },250);
 });
 document.addEventListener("submit", async e=>{
   if(e.target.id!=="form-login") return; e.preventDefault();
@@ -567,11 +607,20 @@ document.addEventListener("submit", async e=>{
   }catch(err){ mal("No se pudo conectar. Revisa tu internet e inténtalo de nuevo."); }
 });
 
-function descargarCSV(clave){
+async function descargarCSV(clave){
   const rows = aplicar(clave==="mes"?S.obras.filter(o=>mesDe(o)===S.mes):S.obras, S.tabla[clave]);
-  const cols = ["id","obra","categoria","entidad","ciudad","etapa","clase","puntos","desarrollador","constructora","nivel_contacto","estado","util","novedad","primera_deteccion","fuente_url"];
-  const cel = v => `"${String(v??"").replace(/"/g,'""')}"`;
-  const csv = "﻿"+[cols.join(","), ...rows.map(o=>cols.map(c=>cel(o[c])).join(","))].join("\r\n");
+  let porObra = {};
+  try{
+    const {data,error} = await sb.from("contactos").select("obra_id,nombre,cargo,telefono,correo,linkedin_url,linkedin_es_busqueda").order("id");
+    if(error) throw error;
+    (data||[]).forEach(c=>{ (porObra[c.obra_id]=porObra[c.obra_id]||[]).push(c); });
+  }catch(err){ porObra = null; toast("El CSV se descargó sin los contactos: no se pudieron leer.","err"); }
+  const quien = o => ((porObra&&porObra[o.id])||[]).map(c=>[limpia(c.nombre), limpia(c.cargo)?`(${limpia(c.cargo)})`:"", (c.linkedin_url&&!c.linkedin_es_busqueda)?c.linkedin_url:"", !nopub(c.telefono)?"Tel "+limpia(c.telefono):"", !nopub(c.correo)?limpia(c.correo):""].filter(Boolean).join(" ")).join(" | ");
+  const cols = ["id","obra","categoria","entidad","ciudad","etapa","clase","puntos","desarrollador","constructora","nivel_contacto","telefono_empresa","correo_empresa","sitio_web","linkedin_empresa","estado","util","novedad","primera_deteccion","fuente_url"];
+  // un texto que empiece con = + - @ se abriría como fórmula en Excel: se antepone una comilla
+  const cel = v => { let t = String(v??""); if(/^[=+\-@\t\r]/.test(t)) t = "'"+t; return `"${t.replace(/"/g,'""')}"`; };
+  const cab = cols.concat(porObra ? ["contactos"] : []);
+  const csv = "\uFEFF"+[cab.join(","), ...rows.map(o=>cols.map(c=>cel(o[c])).concat(porObra?[cel(quien(o))]:[]).join(","))].join("\r\n");
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"}));
   a.download = `radar-socomb-${new Date().toISOString().slice(0,10)}.csv`; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
