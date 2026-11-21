@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es-MX">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -47,14 +47,15 @@ main{max-width:1280px;margin:0 auto;padding:20px}
 .card h2{font-size:18px;margin-bottom:10px}
 .top5{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
 .t5{display:flex;flex-direction:column;justify-content:flex-start;align-items:flex-start;font:inherit;border:1px solid var(--linea);border-left:5px solid var(--lima);border-radius:6px;padding:12px;background:#fff;cursor:pointer;text-align:left;width:100%}
+.t5{min-width:0}
 .t5:hover{border-color:var(--petroleo)}
 .t5 .r{font-size:11px;color:var(--tinta2);font-weight:700}
-.t5 .nm{font-weight:700;color:var(--navy);margin:2px 0 4px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.t5 .nm{font-weight:700;color:var(--navy);margin:2px 0 4px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
 .t5 .m{font-size:12px;color:var(--tinta2)}
 /* Controles */
 .filtros{scroll-margin-top:72px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px}
 .filtros label{display:flex;flex-direction:column;font-size:11px;font-weight:700;color:var(--tinta2);gap:3px}
-input[type=search],input[type=text],input[type=email],input[type=password],select,textarea{font:inherit;border:1px solid var(--linea);border-radius:4px;padding:7px 9px;background:#fff;color:var(--tinta);min-width:0}
+input[type=search],input[type=text],input[type=email],input[type=password],select,textarea{font:inherit;border:1px solid #6B8A93;border-radius:4px;padding:7px 9px;background:#fff;color:var(--tinta);min-width:0}
 .filtros select{max-width:200px}
 .btn{border:1px solid var(--navy);background:#fff;color:var(--navy);border-radius:4px;padding:7px 12px;font-weight:600}
 .btn.pri{background:var(--azul);border-color:var(--azul);color:var(--navy)}
@@ -65,6 +66,9 @@ input[type=search],input[type=text],input[type=email],input[type=password],selec
 .tw{overflow-x:auto;border:1px solid var(--linea);border-radius:6px;background:#fff}
 table{border-collapse:collapse;width:100%}
 th,td{padding:9px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--linea)}
+td{overflow-wrap:break-word}
+td .nm,td .sub{overflow-wrap:anywhere}
+.cb{white-space:nowrap}
 th{background:var(--navy);color:#fff;font-size:12px;white-space:nowrap;position:sticky;top:0}
 tr.fila{cursor:pointer}
 tr.fila:hover td{background:var(--suave)}
@@ -158,12 +162,29 @@ footer{max-width:1280px;margin:0 auto;padding:6px 20px 30px;color:var(--tinta2);
   .tw{border:0;background:transparent}
   table.resp thead{display:none}
   table.resp tr{display:block;background:#fff;border:1px solid var(--linea);border-radius:6px;margin-bottom:10px;padding:6px 4px}
-  table.resp td{display:flex;gap:10px;border:0;padding:4px 8px}
-  table.resp td::before{content:attr(data-l);flex:0 0 92px;font-size:11px;font-weight:700;color:var(--tinta2)}
+  table.resp td{display:block;position:relative;border:0;padding:4px 8px 4px 108px;min-height:26px}
+  table.resp td::before{content:attr(data-l);position:absolute;left:8px;top:5px;width:92px;font-size:11px;font-weight:700;color:var(--tinta2)}
+  table.resp td:first-child{padding-left:8px}
+  table.resp td:first-child::before{display:none}
   table.resp tr.fila td:first-child{font-size:15px}
   .top-in{gap:8px}
   .kpis{grid-template-columns:1fr 1fr}
   nav.tabs{order:3;flex-basis:100%}
+}
+@media (max-width:480px){.user span{display:none}}
+/* Pantallas táctiles y móviles: objetivos de al menos 44 px y 16 px en campos (evita el zoom de iOS) */
+@media (max-width:820px),(pointer:coarse){
+  .btn,.cc,.back,.user button,.seg button,.correo-ctl button,.toast button,nav.tabs button{min-height:44px}
+  .btn.sm{min-height:44px;padding:8px 12px}
+  select,input[type=search],input[type=text],input[type=email],input[type=password],textarea{min-height:44px;font-size:16px}
+  .pag button.n{min-width:44px;min-height:44px}
+  .correo-ctl button{padding:6px 12px}
+  .correo-ctl{gap:8px}
+  .t5{min-height:44px}
+  .login .alt button{min-height:44px;padding:0 4px}
+  .filtros label{flex:1 1 calc(50% - 8px)}
+  .filtros label:first-child{flex-basis:100%}
+  .filtros select,.filtros input{width:100%;max-width:none}
 }
 </style>
 </head>
@@ -183,7 +204,7 @@ const ESTADOS = { no:"No contactado", contactado:"Contactado", cita:"Cita agenda
 const EVT = { deteccion:"Detectada por el radar", estado:"Cambio de estado", util:"Marca de utilidad", etapa:"Cambio de etapa", novedad:"Novedad", contacto:"Contactos agregados" };
 const NIVELES = { 1:"Decisor identificado", 2:"Canal general", 3:"Contacto pendiente" };
 const CONTACTO = { completo:"Completo", parcial:"Parcial", sin_contacto:"Sin contacto" };
-const VERSION = "2026-11-20.2";
+const VERSION = "2026-11-21.1";
 const ORDEN0 = {semana:"contacto",cambios:"contacto",historico:"contacto",mes:"contacto"};
 const S = {
   fijada:null, yLista:null,
@@ -708,6 +729,8 @@ async function descargarCSV(clave){
 /* ============ Arranque ============ */
 sb.auth.onAuthStateChange((evento, session)=>{
   if(evento==="PASSWORD_RECOVERY"){ S.recovery=true; render(); return; }
+  /* supabase-js repite SIGNED_IN cada vez que la pestaña recupera el foco: si es la misma sesión, no recargar ni mover nada */
+  if(evento==="SIGNED_IN" && S.rol && session && S.user && session.user && session.user.id===S.user.id){ S.user = session.user; return; }
   if(evento==="INITIAL_SESSION"||evento==="SIGNED_IN"||evento==="SIGNED_OUT"){ setTimeout(async()=>{ await entrarSesion(session); if(S.rol) desdeHash(); },0); }
 });
 render();
