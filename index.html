@@ -204,7 +204,7 @@ const ESTADOS = { no:"No contactado", contactado:"Contactado", cita:"Cita agenda
 const EVT = { deteccion:"Detectada por el radar", estado:"Cambio de estado", util:"Marca de utilidad", etapa:"Cambio de etapa", novedad:"Novedad", contacto:"Contactos agregados" };
 const NIVELES = { 1:"Decisor identificado", 2:"Canal general", 3:"Contacto pendiente" };
 const CONTACTO = { completo:"Completo", parcial:"Parcial", sin_contacto:"Sin contacto" };
-const VERSION = "2026-11-21.1";
+const VERSION = "2026-11-21.2";
 const ORDEN0 = {semana:"contacto",cambios:"contacto",historico:"contacto",mes:"contacto"};
 const S = {
   fijada:null, yLista:null,
@@ -239,6 +239,7 @@ function toast(msg, tipo="ok", deshacer){
   const box = document.getElementById("toasts");
   const el = document.createElement("div");
   el.className = "toast"+(tipo==="err"?" err":"");
+  if(tipo==="err") el.setAttribute("role","alert");
   el.innerHTML = `<span>${esc(msg)}</span>`;
   if(deshacer){ const b=document.createElement("button"); b.textContent="Deshacer"; b.onclick=()=>{el.remove();deshacer();}; el.appendChild(b); }
   box.appendChild(el);
@@ -358,8 +359,8 @@ function tablaHTML(clave, base, {mostrarNov=false}={}){
   const chips = [["completo","Listas para contactar"],["parcial","Contacto parcial"],["sin_contacto","Sin contacto"]];
   return `
   <div class="chips-c" role="group" aria-label="Filtrar por contacto">
-    <button class="cc${!T.f.contacto_estado?" on":""}" data-cc="${clave}|">Todas <b>${baseChip.length}</b></button>
-    ${chips.map(([k,l])=>`<button class="cc ${k}${T.f.contacto_estado===k?" on":""}" data-cc="${clave}|${k}">${l} <b>${cnt(k)}</b></button>`).join("")}
+    <button class="cc${!T.f.contacto_estado?" on":""}" aria-pressed="${!T.f.contacto_estado}" data-cc="${clave}|">Todas <b>${baseChip.length}</b></button>
+    ${chips.map(([k,l])=>`<button class="cc ${k}${T.f.contacto_estado===k?" on":""}" aria-pressed="${T.f.contacto_estado===k}" data-cc="${clave}|${k}">${l} <b>${cnt(k)}</b></button>`).join("")}
   </div>
   <div class="filtros" data-tabla="${clave}">
     <label>Buscar<input type="search" placeholder="Obra, ciudad, desarrollador…" value="${esc(T.q)}" data-q="${clave}" style="min-width:220px"></label>
@@ -390,7 +391,7 @@ function tablaHTML(clave, base, {mostrarNov=false}={}){
       · <label>por página <select data-por="${clave}">${[5,10,25,50,100].map(n=>`<option${T.por===n?" selected":""}>${n}</option>`).join("")}</select></label></div>
     <div class="nums">
       <button class="n" data-pag="${clave}|${T.pag-1}" ${T.pag<=1?"disabled":""} aria-label="Página anterior">‹</button>
-      ${paginas(total,T.pag).map(n=>n==="…"?"<span>…</span>":`<button class="n" data-pag="${clave}|${n}" ${n===T.pag?'aria-current="page"':""}>${n}</button>`).join("")}
+      ${paginas(total,T.pag).map(n=>n==="…"?"<span>…</span>":`<button class="n" data-pag="${clave}|${n}" aria-label="Página ${n}" ${n===T.pag?'aria-current="page"':""}>${n}</button>`).join("")}
       <button class="n" data-pag="${clave}|${T.pag+1}" ${T.pag>=total?"disabled":""} aria-label="Página siguiente">›</button>
     </div>
   </div>`;
@@ -451,7 +452,7 @@ function vistaMes(){
   return `<div class="lead"><div><h1>Mes e histórico de corridas</h1><p>Evolución semana a semana y todas las obras detectadas en el mes.</p></div>
     ${meses.length?`<label style="font-weight:700;font-size:12px;color:var(--tinta2)">Mes<br><select data-mes>${meses.map(m=>`<option value="${m}"${m===S.mes?" selected":""}>${esc(etiquetaMes(m))} (${S.obras.filter(o=>mesDe(o)===m).length})</option>`).join("")}</select></label>`:""}</div>
   <section class="card"><h2>Obras nuevas por corrida (${S.mes?esc(etiquetaMes(S.mes)):"mes"})</h2>
-    ${cs.length?`<div class="bars">${cs.map(c=>{const h=n=>Math.round((n||0)/max*180);return `<div class="bar"><div class="tot">${c.nuevas||0}</div>
+    ${cs.length?`<div class="bars">${cs.map(c=>{const h=n=>Math.round((n||0)/max*180);return `<div class="bar" role="img" aria-label="${esc(fechaCorta(c.fecha))}: ${c.nuevas||0} obras nuevas (A ${c.clase_a||0}, B ${c.clase_b||0}, C ${c.clase_c||0})"><div class="tot">${c.nuevas||0}</div>
       <div class="seg1" style="height:${h(c.clase_a)}px" title="Clase A: ${c.clase_a||0}"></div><div class="seg2" style="height:${h(c.clase_b)}px" title="Clase B: ${c.clase_b||0}"></div><div class="seg3" style="height:${h(c.clase_c)}px" title="Clase C: ${c.clase_c||0}"></div></div>`}).join("")}</div>
       <div class="blabels">${cs.map(c=>`<div>${esc(fechaCorta(c.fecha))}${c.es_prueba?"<br>(prueba)":""}</div>`).join("")}</div>
       <div class="leyenda"><span><i style="background:var(--lima)"></i>Clase A</span><span><i style="background:var(--menta)"></i>Clase B</span><span><i style="background:#C9D3D6"></i>Clase C</span></div>
