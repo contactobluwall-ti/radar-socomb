@@ -70,6 +70,20 @@ tr.fila{cursor:pointer}
 tr.fila:hover td{background:var(--suave)}
 td .nm{font-weight:700;color:var(--navy)}
 td .sub{font-size:12px;color:var(--tinta2)}
+.chips-c{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.cc{font:inherit;font-size:13px;font-weight:700;border:1px solid var(--linea);background:#fff;color:var(--tinta2);border-radius:999px;padding:6px 14px;cursor:pointer}
+.cc b{color:var(--navy);margin-left:4px}
+.cc:hover{border-color:var(--petroleo)}
+.cc.on{background:var(--navy);border-color:var(--navy);color:#fff}
+.cc.on b{color:#fff}
+.cc.completo:not(.on){border-color:var(--lima)}
+.cb{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700}
+.cb.completo{background:var(--lima);color:var(--navy)}
+.cb.parcial{background:#FFE9B8;color:#5A3A00}
+.cb.sin_contacto{background:#E3E8EA;color:var(--tinta2)}
+.pa{font-weight:700;color:var(--petroleo)}
+.kpi.ok{border-left:5px solid var(--lima)}
+.t5.casi{border-left-color:#E8C777}
 .badge{display:inline-block;min-width:26px;text-align:center;padding:2px 8px;border-radius:4px;font-weight:700;font-size:12px}
 .badge.A{background:var(--lima);color:var(--navy)}
 .badge.B{background:var(--menta);color:var(--navy)}
@@ -168,17 +182,18 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const ESTADOS = { no:"No contactado", contactado:"Contactado", cita:"Cita agendada", cancelado:"No aplicó / perdida", cerrada:"Ganada" };
 const EVT = { deteccion:"Detectada por el radar", estado:"Cambio de estado", util:"Marca de utilidad", etapa:"Cambio de etapa", novedad:"Novedad", contacto:"Contactos agregados" };
 const NIVELES = { 1:"Decisor identificado", 2:"Canal general", 3:"Contacto pendiente" };
-const VERSION = "2026-11-19.3";
-const ORDEN0 = {semana:"puntos",cambios:"puntos",historico:"reciente",mes:"puntos"};
+const CONTACTO = { completo:"Completo", parcial:"Parcial", sin_contacto:"Sin contacto" };
+const VERSION = "2026-11-20.1";
+const ORDEN0 = {semana:"contacto",cambios:"contacto",historico:"contacto",mes:"contacto"};
 const S = {
   fijada:null, yLista:null,
   arranque:true, user:null, rol:null, obras:[], corridas:[], cargado:false, error:null,
   vista:"semana", ficha:null, recovery:false, modoLogin:"entrar",
   tabla:{
-    semana:{q:"", f:{}, orden:"puntos", pag:1, por:10},
-    cambios:{q:"", f:{}, orden:"puntos", pag:1, por:10},
-    historico:{q:"", f:{}, orden:"reciente", pag:1, por:10},
-    mes:{q:"", f:{}, orden:"puntos", pag:1, por:10},
+    semana:{q:"", f:{}, orden:"contacto", pag:1, por:10},
+    cambios:{q:"", f:{}, orden:"contacto", pag:1, por:10},
+    historico:{q:"", f:{}, orden:"contacto", pag:1, por:10},
+    mes:{q:"", f:{}, orden:"contacto", pag:1, por:10},
   },
   mes:null
 };
@@ -277,12 +292,16 @@ async function agregarNota(){
 }
 
 /* ============ Filtro / orden / paginación ============ */
+const RANGO_C = o => ({completo:0, parcial:1, sin_contacto:2}[o.contacto_estado] ?? 3);
+const insCont = o => `<span class="cb ${esc(o.contacto_estado||"sin_contacto")}">${esc(CONTACTO[o.contacto_estado]||"—")}</span>${o.contacto_falta?`<div class="sub">${esc(o.contacto_falta)}</div>`:""}`;
+const insClase = o => `<span class="badge ${esc(o.clase)}">${esc(o.clase)}</span>${o.potencial_a?`<div class="sub pa" title="Sería clase A si tuviera contacto completo">Potencial A</div>`:""}`;
 function aplicar(rows, T){
   let r = rows.slice();
   const q = norm(T.q.trim());
   if(q) r = r.filter(o => norm([o.obra,o.ciudad,o.entidad,o.desarrollador,o.categoria,o.id,o.constructora].join(" ")).includes(q));
   for(const [k,v] of Object.entries(T.f)) if(v) r = r.filter(o => o.id === S.fijada || String(o[k]) === v);
   const ord = {
+    contacto:(a,b)=>RANGO_C(a)-RANGO_C(b) || b.puntos-a.puntos,
     puntos:(a,b)=>b.puntos-a.puntos || a.nivel_contacto-b.nivel_contacto,
     reciente:(a,b)=>String(b.primera_deteccion).localeCompare(a.primera_deteccion) || b.puntos-a.puntos,
     nombre:(a,b)=>a.obra.localeCompare(b.obra,"es")
@@ -300,15 +319,20 @@ function tablaHTML(clave, base, {mostrarNov=false}={}){
   const ini = (T.pag-1)*T.por, vis = rows.slice(ini, ini+T.por);
   const sel = (k,lbl,vals,fmt=x=>x) => `<label>${lbl}<select data-f="${clave}|${k}"><option value="">Todos</option>${vals.map(v=>`<option value="${esc(v)}"${T.f[k]===String(v)?" selected":""}>${esc(fmt(v))}</option>`).join("")}</select></label>`;
   const hay = Object.values(T.f).some(Boolean) || T.q || T.orden !== ORDEN0[clave];
+  const cnt = k => base.filter(o=>o.contacto_estado===k).length;
+  const chips = [["completo","Listas para contactar"],["parcial","Contacto parcial"],["sin_contacto","Sin contacto"]];
   return `
+  <div class="chips-c" role="group" aria-label="Filtrar por contacto">
+    <button class="cc${!T.f.contacto_estado?" on":""}" data-cc="${clave}|">Todas <b>${base.length}</b></button>
+    ${chips.map(([k,l])=>`<button class="cc ${k}${T.f.contacto_estado===k?" on":""}" data-cc="${clave}|${k}">${l} <b>${cnt(k)}</b></button>`).join("")}
+  </div>
   <div class="filtros" data-tabla="${clave}">
     <label>Buscar<input type="search" placeholder="Obra, ciudad, desarrollador…" value="${esc(T.q)}" data-q="${clave}" style="min-width:220px"></label>
     ${sel("categoria","Categoría",uniq(base,"categoria"))}
     ${sel("entidad","Entidad",uniq(base,"entidad"))}
     ${sel("clase","Clase",["A","B","C"])}
     ${sel("estado","Estado",Object.keys(ESTADOS),k=>ESTADOS[k])}
-    ${sel("nivel_contacto","Contacto",[1,2,3],k=>NIVELES[k])}
-    <label>Ordenar<select data-o="${clave}"><option value="puntos"${T.orden==="puntos"?" selected":""}>Más puntos</option><option value="reciente"${T.orden==="reciente"?" selected":""}>Más reciente</option><option value="nombre"${T.orden==="nombre"?" selected":""}>Nombre</option></select></label>
+    <label>Ordenar<select data-o="${clave}"><option value="contacto"${T.orden==="contacto"?" selected":""}>Contacto completo primero</option><option value="puntos"${T.orden==="puntos"?" selected":""}>Más puntos</option><option value="reciente"${T.orden==="reciente"?" selected":""}>Más reciente</option><option value="nombre"${T.orden==="nombre"?" selected":""}>Nombre</option></select></label>
     ${hay?`<button class="btn sm" data-limpiar="${clave}">Limpiar filtros</button>`:""}
     ${clave==="historico"||clave==="mes"?`<button class="btn sm" data-csv="${clave}">Descargar CSV</button>`:""}
   </div>
@@ -317,12 +341,12 @@ function tablaHTML(clave, base, {mostrarNov=false}={}){
     <tbody>${vis.length ? vis.map(o=>`
       <tr class="fila" data-ficha="${esc(o.id)}" tabindex="0">
         <td data-l="Obra"><div class="nm">${esc(o.obra)}</div><div class="sub">${esc(o.id)} · ${esc(o.desarrollador||"")}${mostrarNov&&o.novedad&&o.novedad!=="sin cambio"?` · <b>${esc(o.novedad)}</b>`:""}</div></td>
-        <td data-l="Clase"><span class="badge ${esc(o.clase)}">${esc(o.clase)}</span></td>
-        <td data-l="Puntos"><b>${esc(o.puntos)}</b></td>
+        <td data-l="Clase">${insClase(o)}</td>
+        <td data-l="Puntos"><b>${esc(o.puntos)}</b><div class="sub">${esc(o.puntos_base??"—")} base + ${esc(o.contacto_pts??0)} contacto</div></td>
         <td data-l="Categoría">${esc(o.categoria)}</td>
         <td data-l="Ciudad">${esc(o.ciudad)}<div class="sub">${esc(o.entidad)}</div></td>
         <td data-l="Etapa"><span class="sub" style="color:inherit">${esc(String(o.etapa||"").slice(0,110))}${String(o.etapa||"").length>110?"…":""}</span></td>
-        <td data-l="Contacto">${esc(NIVELES[o.nivel_contacto]||"—")}</td>
+        <td data-l="Contacto">${insCont(o)}</td>
         <td data-l="Estado" data-stop="1">${puede()?`<select class="est ${esc(o.estado)}" data-estado="${esc(o.id)}" aria-label="Estado de ${esc(o.obra)}">${Object.entries(ESTADOS).map(([k,v])=>`<option value="${k}"${o.estado===k?" selected":""}>${v}</option>`).join("")}</select>`:`<span class="est ${esc(o.estado)}">${esc(ESTADOS[o.estado])}</span>`}</td>
       </tr>`).join("") : `<tr><td colspan="8" class="vacio">${base.length?"Ninguna obra coincide con los filtros.":"Aún no hay obras en esta sección."}</td></tr>`}
     </tbody></table></div>
@@ -343,8 +367,11 @@ function vistaSemana(){
   const nuevas = S.obras.filter(o=>o.novedad==="nueva");
   const cambios = S.obras.filter(o=>o.novedad==="cambio de etapa"||o.novedad==="actualización");
   const A = nuevas.filter(o=>o.clase==="A").length, B = nuevas.filter(o=>o.clase==="B").length;
-  const pend = nuevas.filter(o=>o.clase==="A"&&o.nivel_contacto===3).length;
-  const top = nuevas.filter(o=>Number(o.nivel_contacto)===1).sort((a,b)=>b.puntos-a.puntos||a.nivel_contacto-b.nivel_contacto).slice(0,5);
+  const vivas = S.obras.filter(o=>o.estado!=="cancelado"&&o.estado!=="cerrada");
+  const listas = vivas.filter(o=>o.contacto_estado==="completo");
+  const casi = vivas.filter(o=>o.potencial_a).sort((a,b)=>(RANGO_C(a)-RANGO_C(b))||b.puntos_base-a.puntos_base).slice(0,6);
+  const nPot = vivas.filter(o=>o.potencial_a).length;
+  const top = listas.slice().sort((a,b)=>b.puntos-a.puntos||(b.novedad==="nueva")-(a.novedad==="nueva")).slice(0,5);
   return `
   <div class="lead"><div><h1>Esta semana</h1>
     <p>${ult?`Corrida del ${fecha(ult.fecha)} ${ult.es_prueba?'<span class="pill prueba">Corrida de prueba</span>':""}`:"Aún no hay corridas registradas."}</p></div>
@@ -355,11 +382,17 @@ function vistaSemana(){
     <div class="kpi"><div class="n">${A}</div><div class="t">Clase A</div></div>
     <div class="kpi"><div class="n">${B}</div><div class="t">Clase B</div></div>
     <div class="kpi"><div class="n">${cambios.length}</div><div class="t">Con cambio o novedad</div></div>
-    <div class="kpi"><div class="n">${pend}</div><div class="t">Clase A con contacto pendiente</div></div>
+    <div class="kpi ok"><div class="n">${listas.length}</div><div class="t">Listas para contactar (LinkedIn y correo)</div></div>
+    <div class="kpi"><div class="n">${nPot}</div><div class="t">Potencial A: les falta contacto</div></div>
   </div>
-  <section class="card"><h2>Las 5 mejores obras nuevas</h2>
-    ${top.length?`<div class="top5">${top.map((o,i)=>`<button class="t5" data-ficha="${esc(o.id)}"><div class="r">#${i+1} · ${esc(o.puntos)} puntos · Clase ${esc(o.clase)}</div><div class="nm">${esc(o.obra)}</div><div class="m">${esc(o.ciudad)}, ${esc(o.entidad)}<br>${esc(NIVELES[o.nivel_contacto])}</div></button>`).join("")}</div>`:`<div class="vacio">Sin obras nuevas con decisor identificado esta semana.</div>`}
+  <section class="card"><h2>Las 5 mejores obras listas para contactar</h2>
+    <p class="sub" style="color:var(--tinta2);margin-top:0">Obras con al menos un decisor con LinkedIn y correo de trabajo (los correos están sin verificar).</p>
+    ${top.length?`<div class="top5">${top.map((o,i)=>`<button class="t5" data-ficha="${esc(o.id)}"><div class="r">#${i+1} · ${esc(o.puntos)} puntos · Clase ${esc(o.clase)}${o.novedad==="nueva"?" · nueva":""}</div><div class="nm">${esc(o.obra)}</div><div class="m">${esc(o.ciudad)}, ${esc(o.entidad)}</div></button>`).join("")}</div>`:`<div class="vacio">Todavía no hay obras con LinkedIn y correo de un decisor.</div>`}
   </section>
+  ${casi.length?`<section class="card"><h2>Casi listas: serían clase A con contacto completo</h2>
+    <div class="top5">${casi.map(o=>`<button class="t5 casi" data-ficha="${esc(o.id)}"><div class="r">Base ${esc(o.puntos_base)}/70 · ${esc(o.contacto_falta||"sin contacto")}</div><div class="nm">${esc(o.obra)}</div><div class="m">${esc(o.ciudad)}, ${esc(o.entidad)}</div></button>`).join("")}</div>
+    <p class="sub" style="color:var(--tinta2);margin-bottom:0">Para ver todas, filtra "Contacto parcial" o "Sin contacto" en las tablas de abajo.</p>
+  </section>`:""}
   <section class="card"><h2>Obras nuevas</h2>${tablaHTML("semana",nuevas)}</section>
   <section class="card"><h2>Cambios de etapa y novedades de obras ya detectadas</h2>${tablaHTML("cambios",cambios,{mostrarNov:true})}</section>`;
 }
@@ -435,6 +468,7 @@ function etiquetasContacto(c){
     if(puede()) ctlCorreo = `<div class="correo-ctl" role="group" aria-label="Estado del correo"><button data-correo="${c.id}|verificado" aria-pressed="${c.correo_estado==="verificado"}">Verificado</button><button data-correo="${c.id}|invalido" aria-pressed="${c.correo_estado==="invalido"}">Inválido</button></div>`;
   } else if(c.correo_estado==="sin_resultado") t.push(tag(`Sin correo · ${esc(limpia(c.correo_fuente||"búsqueda"))} sin resultado`,"falta"));
   else t.push(tag("Sin correo","falta"));
+  if(c.tipo==="decisor" && c.linkedin_url && !c.linkedin_es_busqueda && !nopub(c.correo) && c.correo_estado!=="invalido") t.unshift(tag("Contacto completo","ok"));
   if(/vigencia por verificar/i.test(c.fuente||"")) t.push(tag("Vigencia por verificar","aviso"));
   return v.map(x=>`<span class="val">${x}</span>`).join("")+ctlCorreo+t.join("");
 }
@@ -454,7 +488,7 @@ function resumenContactos(o, cs){
 function claveFoco(el){
   if(!el || el===document.body) return null;
   if(el.id) return "#"+el.id;
-  for(const a of ["data-f","data-o","data-por","data-estado","data-q","data-mes","data-pag","data-util","data-dato","data-correo","data-corr","data-vista"]) if(el.hasAttribute(a)) return `[${a}="${CSS.escape(el.getAttribute(a))}"]`;
+  for(const a of ["data-cc","data-f","data-o","data-por","data-estado","data-q","data-mes","data-pag","data-util","data-dato","data-correo","data-corr","data-vista"]) if(el.hasAttribute(a)) return `[${a}="${CSS.escape(el.getAttribute(a))}"]`;
   return null;
 }
 function conservar(fn){
@@ -480,7 +514,7 @@ function vistaFicha(){
   <button class="back" data-vista="${S.ultimaVista||"semana"}" data-volver>← Volver</button>
   <div class="lead"><div><h1>${esc(o.obra)}</h1>
     <p>${esc(o.id)} · ${esc(o.categoria)} · ${esc(o.ciudad)}, ${esc(o.entidad)}</p></div>
-    <div><span class="badge ${esc(o.clase)}">Clase ${esc(o.clase)}</span> <b style="font-size:20px">${esc(o.puntos)}</b> <span class="sub">puntos</span></div></div>
+    <div><span class="badge ${esc(o.clase)}">Clase ${esc(o.clase)}</span> <b style="font-size:20px">${esc(o.puntos)}</b> <span class="sub">puntos</span> ${o.potencial_a?`<span class="pill" title="Sería clase A si tuviera contacto completo">Potencial A</span>`:""}<div style="margin-top:4px;text-align:right">${insCont(o)}</div></div></div>
   ${e?`<div class="warn">Tu cuenta es de solo lectura: puedes consultar, no cambiar estados ni notas.</div>`:""}
   ${/^grave/i.test(String(o.riesgo||"").trim())?`<div class="alerta"><b>Señal de riesgo:</b> ${esc(o.riesgo)}</div>`:""}
   <section class="card"><div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end">
@@ -498,11 +532,11 @@ function vistaFicha(){
       <dt>LEED</dt><dd>${esc(o.leed)}</dd><dt>Marcas</dt><dd>${esc(o.marcas)}</dd><dt>Riesgo</dt><dd>${esc(o.riesgo)}</dd>
       <dt>Fuentes</dt><dd>${fuentes.map(u=>seguro(u)?link(u,u.replace(/^https?:\/\/(www\.)?/,"").slice(0,60)):esc(u)).join("<br>")}<div class="sub" style="color:var(--tinta2)">Fecha de la fuente: ${esc(o.fecha_fuente)}</div></dd>
       <dt>Confianza</dt><dd>${esc(confSolo(o.confianza))}</dd>
-      <dt>Puntos</dt><dd>${esc(desglose(o.confianza)||"desglose no publicado")} <span class="sub" style="color:var(--tinta2)">(familias · tamaño · tipo · confianza · contacto)</span></dd>
+      <dt>Puntos</dt><dd><b>${esc(o.puntos)}</b> = ${esc(o.puntos_base??"—")} base + ${esc(o.contacto_pts??0)} de contacto<div class="sub" style="color:var(--tinta2)">Base: ${esc(desglose(o.confianza)||"desglose no publicado")} (familias 25 · tamaño 20 · tipo 15 · confianza 10). Contacto: completo 30, LinkedIn o correo 15, decisor 10, canal general 6.</div></dd>
     </dl></section>
     <section class="card"><h2>Cadena y contacto</h2><dl class="kv">
       <dt>Desarrollador</dt><dd>${esc(o.desarrollador)}</dd><dt>Constructora</dt><dd>${esc(o.constructora)}</dd><dt>Cadena</dt><dd>${esc(o.cadena)}</dd>
-      <dt>Nivel de contacto</dt><dd>${esc(NIVELES[o.nivel_contacto]||"—")}</dd>
+      <dt>Contacto</dt><dd>${insCont(o)}<div class="sub" style="color:var(--tinta2)">Completo = un decisor con perfil de LinkedIn y correo de trabajo.</div></dd>
       ${canal.map(([k,v])=>`<dt>${k}</dt><dd>${v||'<span class="sub" style="color:var(--tinta2)">no publicado</span>'}</dd>`).join("")}
     </dl></section>
   </div>
@@ -587,13 +621,14 @@ window.addEventListener("popstate", desdeHash);
 
 /* ============ Eventos (delegación) ============ */
 document.addEventListener("click", e=>{
-  const t = e.target.closest("[data-vista],[data-ficha],[data-pag],[data-limpiar],[data-csv],[data-util],[data-dato],[data-correo],[data-corr],[data-nota],[data-salir],[data-modo],[data-reintentar]");
+  const t = e.target.closest("[data-vista],[data-ficha],[data-pag],[data-cc],[data-limpiar],[data-csv],[data-util],[data-dato],[data-correo],[data-corr],[data-nota],[data-salir],[data-modo],[data-reintentar]");
   if(!t) return;
   if(e.target.closest("[data-stop]") && t.dataset.ficha) return; // clic en el selector de estado no abre la ficha
   if("reintentar" in t.dataset) return reintentar();
   if(t.dataset.vista) return irA(t.dataset.vista, "volver" in t.dataset);
   if(t.dataset.ficha) return abrirDesdeLista(t.dataset.ficha);
   if(t.dataset.pag){ const [k,n]=t.dataset.pag.split("|"); S.tabla[k].pag=+n; S.fijada=null; render(); const ft=document.querySelector(`[data-tabla="${k}"]`); if(ft) ft.scrollIntoView(); return; }
+  if(t.dataset.cc!==undefined){ const [k,v]=t.dataset.cc.split("|"); const T=S.tabla[k]; if(v) T.f.contacto_estado=v; else delete T.f.contacto_estado; T.pag=1; S.fijada=null; return render(); }
   if(t.dataset.limpiar){ const T=S.tabla[t.dataset.limpiar]; T.q=""; T.f={}; T.orden=ORDEN0[t.dataset.limpiar]; T.pag=1; S.fijada=null; return render(); }
   if(t.dataset.csv) return descargarCSV(t.dataset.csv);
   if(t.dataset.util){ const [id,v]=t.dataset.util.split("|"); return marcarUtil(id,v); }
@@ -647,7 +682,7 @@ async function descargarCSV(clave){
     (data||[]).forEach(c=>{ (porObra[c.obra_id]=porObra[c.obra_id]||[]).push(c); });
   }catch(err){ porObra = null; toast("El CSV se descargó sin los contactos: no se pudieron leer.","err"); }
   const quien = o => ((porObra&&porObra[o.id])||[]).map(c=>[limpia(c.nombre), limpia(c.cargo)?`(${limpia(c.cargo)})`:"", (c.linkedin_url&&!c.linkedin_es_busqueda)?c.linkedin_url:"", !nopub(c.telefono)?"Tel "+limpia(c.telefono):"", !nopub(c.correo)?limpia(c.correo)+(c.correo_estado==="verificado"?"":c.correo_estado==="invalido"?" (correo inválido)":" (correo sin verificar)"):""].filter(Boolean).join(" ")).join(" | ");
-  const cols = ["id","obra","categoria","entidad","ciudad","etapa","clase","puntos","desarrollador","constructora","nivel_contacto","telefono_empresa","correo_empresa","sitio_web","linkedin_empresa","estado","util","novedad","primera_deteccion","fuente_url"];
+  const cols = ["id","obra","categoria","entidad","ciudad","etapa","clase","puntos","puntos_base","contacto_estado","contacto_falta","potencial_a","desarrollador","constructora","nivel_contacto","telefono_empresa","correo_empresa","sitio_web","linkedin_empresa","estado","util","novedad","primera_deteccion","fuente_url"];
   // un texto que empiece con = + - @ se abriría como fórmula en Excel: se antepone una comilla
   const cel = v => { let t = String(v??""); if(/^[=+\-@\t\r]/.test(t)) t = "'"+t; return `"${t.replace(/"/g,'""')}"`; };
   const cab = cols.concat(porObra ? ["contactos"] : []);
